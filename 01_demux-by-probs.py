@@ -76,7 +76,8 @@ for set_idx, (grp_id, prb_set) in enumerate(prb_grp):
 
     prob_info = dict()
     prob_info['expr_id'] = '{:s}_{:s}'.format(inp_args.sample_id, locus_name)
-    prob_info['vp_chr'] = chr2nid[vp_chr]
+    prob_info['vp_chr_idx'] = chr2nid[vp_chr]
+    prob_info['vp_chr_name'] = vp_chr
     prob_info['vp_pos'] = int((vp_en + vp_be) / 2)
     prob_info['vp_be'] = vp_be
     prob_info['vp_en'] = vp_en
@@ -112,7 +113,7 @@ with pysam.AlignmentFile(inp_args.input_bam, 'rb') as source_fid:
 n_read = 0
 n_unmatched = 0
 n_multi_capture = 0
-vp_crds = vpi_pd[['vp_chr', 'vp_be', 'vp_en']].values
+vp_crds = vpi_pd[['vp_chr_idx', 'vp_be', 'vp_en']].values
 vp_names = vpi_pd['vp_gene'].values
 hit_colors = ['{:0.0f},{:0.0f},{:0.0f}'.format(*c[:3] * 255) for c in plt.cm.get_cmap('jet', 50)(np.linspace(0, 1, 50))]
 print('Looping over reads in: {:s}'.format(inp_args.input_bam))
