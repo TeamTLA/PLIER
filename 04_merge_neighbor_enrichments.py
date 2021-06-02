@@ -86,7 +86,7 @@ for ei, (expr_idx, vp_info) in enumerate(vp_infos.iterrows()):
             continue
 
         # marking neighbor bins
-        enrich_crd = sig_pd[['chr', 'pos', 'pos']].values
+        enrich_crd = sig_pd[['chr_idx', 'pos', 'pos']].values
         enrich_crd[:, 2] += bin_width
         nei_idxs = np.arange(len(sig_pd))
         for ci in range(len(sig_pd)):
@@ -101,12 +101,13 @@ for ei, (expr_idx, vp_info) in enumerate(vp_infos.iterrows()):
         sig_pd = sig_pd.sort_values(by='#cpt_zscr', ascending=False).reset_index(drop=True)
         nei_grp = sig_pd.groupby(by='nei_idx', sort=False)
         for rank_idx, (nei_idx, nei_pd) in enumerate(nei_grp):
-            itm_crd = [nei_pd['chr'].iat[0], np.min(nei_pd['pos']), np.max(nei_pd['pos']) + bin_width]
-            itm_pd = vp_info[['expr_id', 'vp_chr', 'vp_pos', 'vp_gene', 'sample_id']].copy()
+            itm_crd = [nei_pd['chr_idx'].iat[0], np.min(nei_pd['pos']), np.max(nei_pd['pos']) + bin_width]
+            itm_pd = vp_info[['expr_id', 'vp_chr_idx', 'vp_chr_name', 'vp_pos', 'vp_gene', 'sample_id']].copy()
             itm_pd['bin_width'] = bin_width
             itm_pd['enrich_rank'] = rank_idx + 1
             itm_pd['#nei_merged'] = nei_pd.shape[0]
-            itm_pd['enrich_chr'] = itm_crd[0]
+            itm_pd['enrich_chr_idx'] = itm_crd[0]
+            itm_pd['enrich_chr_name'] = nei_pd['chr_name'].iat[0]
             itm_pd['enrich_pos'] = nei_pd.nlargest(1, '#cpt_zscr')['pos'].values[0]
             itm_pd['enrich_beg'] = itm_crd[1]
             itm_pd['enrich_end'] = itm_crd[2]

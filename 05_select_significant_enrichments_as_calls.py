@@ -65,7 +65,7 @@ for ei, (expr_idx, vp_info) in enumerate(vp_infos.iterrows()):
     enrichments = enrichments.sort_values(by=inp_args.enrichment_score, ascending=False).reset_index(drop=True)
 
     # finding overlapping calls across bin_widths/Gaussian_widths/n_steps
-    enrich_crd = enrichments[['enrich_chr', 'enrich_beg', 'enrich_end']].values
+    enrich_crd = enrichments[['enrich_chr_idx', 'enrich_beg', 'enrich_end']].values
     ovl_idxs = np.arange(len(enrich_crd))
     for ci in range(len(enrich_crd)):
         has_ol = overlap(enrich_crd[ci], enrich_crd, offset=inp_args.neighborhood_width)
@@ -76,7 +76,7 @@ for ei, (expr_idx, vp_info) in enumerate(vp_infos.iterrows()):
     del enrich_crd, ovl_idxs
 
     # select significant calls: The overlap is determined, we dont need insignificant calls anymore
-    is_cis = enrichments['vp_chr'] == enrichments['enrich_chr']
+    is_cis = enrichments['vp_chr_idx'] == enrichments['enrich_chr_idx']
     is_sig = (is_cis & (enrichments[inp_args.enrichment_score] >= inp_args.significance_threshold_cis)) | \
              (~is_cis & (enrichments[inp_args.enrichment_score] >= inp_args.significance_threshold))
     enrichments = enrichments.loc[is_sig].reset_index(drop=True)
@@ -91,8 +91,9 @@ for ei, (expr_idx, vp_info) in enumerate(vp_infos.iterrows()):
             continue
         repr_call = bw_grp.get_group(np.max(params_pd['bin_width'])).nlargest(1, inp_args.enrichment_score).iloc[0]
 
-        call = vp_info[['expr_id', 'vp_chr', 'vp_be', 'vp_en', 'vp_gene', 'sample_id']].copy()
-        call['call_chr'] = repr_call['enrich_chr']
+        call = vp_info[['expr_id', 'vp_chr_idx', 'vp_chr_name', 'vp_be', 'vp_en', 'vp_gene', 'sample_id']].copy()
+        call['call_chr_idx'] = repr_call['enrich_chr_idx']
+        call['call_chr_name'] = repr_call['enrich_chr_name']
         call['call_pos'] = repr_call['enrich_pos']
         call['call_beg'] = int(params_pd['enrich_beg'].min())
         call['call_end'] = int(params_pd['enrich_end'].max())
@@ -106,7 +107,7 @@ significant_calls = pd.DataFrame(significant_calls, index=range(len(significant_
 # =======================
 # checking for amplification events
 # mark overlapping calls
-call_crd = significant_calls[['call_chr', 'call_beg', 'call_end']].values
+call_crd = significant_calls[['call_chr_idx', 'call_beg', 'call_end']].values
 rgn_idxs = np.arange(call_crd.shape[0])
 for ci in range(call_crd.shape[0]):
     has_ol = overlap(call_crd[ci], call_crd, offset=1e6)
@@ -117,7 +118,7 @@ significant_calls['call_idx'] = np.unique(rgn_idxs, return_inverse=True)[1]
 del call_crd, rgn_idxs
 
 # mark nearby VPs
-vp_crd = significant_calls[['vp_chr', 'vp_be', 'vp_en']].values
+vp_crd = significant_calls[['vp_chr_idx', 'vp_be', 'vp_en']].values
 vp_idx = np.arange(vp_crd.shape[0])
 for vi in range(vp_crd.shape[0]):
     has_ol = overlap(vp_crd[vi], vp_crd, offset=2e6)

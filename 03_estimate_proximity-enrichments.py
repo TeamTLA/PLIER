@@ -91,16 +91,16 @@ n_chr = len(chr_lst)
 
 # load RE positions
 print('Loading 1st ResEnz: {:s}'.format(vp_info['res_enzyme']))
-re1_pos_lst = get_re_info(re_name=vp_info['res_enzyme'], property='pos', genome=vp_info['genome'])
+re1_pos_lst = get_re_info(re_name=vp_info['res_enzyme'], property='pos', reference_fasta=vp_info['genome'])
 if ('second_cutter' in vp_info) and (isinstance(vp_info['second_cutter'], str)):
     print('Loading 2nd ResEnz: {:s}'.format(vp_info['second_cutter']))
-    re2_pos_lst = get_re_info(re_name=vp_info['second_cutter'], property='pos', genome=vp_info['genome'])
+    re2_pos_lst = get_re_info(re_name=vp_info['second_cutter'], property='pos', reference_fasta=vp_info['genome'])
 else:
     re2_pos_lst = [np.empty(0, dtype=int)] * n_chr
 
 # load data
 data_pd = load_dataset(vp_info, target_field='frg_np', verbose=True, data_path=inp_args.dataset_dir)
-data = data_pd[['chr', 'pos', '#read']].values.astype('int32')
+data = data_pd[['chr_idx', 'pos', '#read']].values.astype('int32')
 del data_pd
 vp_info['#rd_all'] = np.sum(data[:, 2])
 
@@ -121,7 +121,7 @@ if inp_args.down_sample:
     del ds_set, rf_uid, rf_frq, n_map
 
 # Calculate general statistics
-is_cis = data[:, 0] == vp_info['vp_chr']
+is_cis = data[:, 0] == vp_info['vp_chr_idx']
 is_vp = is_cis & \
         (data[:, 1] >= vp_info['vp_be']) & \
         (data[:, 1] <= vp_info['vp_en'])
@@ -159,6 +159,7 @@ for chr_nid in np.unique(data[:, 0]):
     is_sel = data[:, 0] == chr_nid
     data_sel = data[is_sel, :]
     print('{:s}, '.format(chr_lst[chr_nid - 1]), end='')
+    chr_name = chr_lst[chr_nid - 1]
 
     # get RE pos
     res_sites = np.unique(np.hstack([
@@ -167,7 +168,7 @@ for chr_nid in np.unique(data[:, 0]):
     ]))
 
     # get capture efficiency
-    if chr_nid == vp_info['vp_chr']:
+    if chr_nid == vp_info['vp_chr_idx']:
         for lcl_w in [100e3, 200e3, 500e3]:
             col_name = 'cpt%_{:0.0f}kb'.format(lcl_w / 1e3)
             n_lcl_rf = np.sum(
@@ -195,11 +196,12 @@ for chr_nid in np.unique(data[:, 0]):
 
     # Adding results to list
     bin_chr = pd.DataFrame()
-    bin_chr['chr'] = np.tile(chr_nid, n_bin)
+    bin_chr['chr_idx'] = np.tile(chr_nid, n_bin)
+    bin_chr['chr_name'] = np.tile(chr_name, n_bin)
     bin_chr['pos'] = edge_lst[:-1]
     bin_chr['#restriction'] = np.bincount(np.searchsorted(edge_lst, res_sites, side='right') - 1, minlength=n_bin)
     bin_chr['#read'] = np.bincount(fe_gidx, weights=data_sel[:, 2], minlength=n_bin).astype(np.int32)
-    if chr_nid == vp_info['vp_chr']:
+    if chr_nid == vp_info['vp_chr_idx']:
         bin_chr['coverage'] = bin_chr['#read'] * 1e6 / float(vp_info['#rd_cis'])
     else:
         bin_chr['coverage'] = bin_chr['#read'] * 1e6 / float(vp_info['#rd_trs'])
@@ -215,12 +217,12 @@ print('Calculating the background')
 bgp_edges = {}
 bgp_freq = {}
 bgp_stat = {}
-is_cis = bin_info['chr'] == vp_info['vp_chr']
+is_cis = bin_info['chr_idx'] == vp_info['vp_chr_idx']
 vp_info['avg_cvg'] = np.mean(bin_info.loc[~ is_cis, '#read'])
 vp_info['avg_cpt'] = np.mean(bin_info.loc[~ is_cis, '#capture'])
-for chr_nid in np.unique(bin_info['chr']):
-    is_sel = bin_info['chr'] == chr_nid
-    bin_type = 'cis' if chr_nid == vp_info['vp_chr'] else 'trans'
+for chr_nid in np.unique(bin_info['chr_idx']):
+    is_sel = bin_info['chr_idx'] == chr_nid
+    bin_type = 'cis' if chr_nid == vp_info['vp_chr_idx'] else 'trans'
     print('Convolving {:5s} ({:5s}), '.format(chr_lst[chr_nid-1], bin_type) +
           '#res={:7,.1f}k, '.format(np.sum(bin_info.loc[is_sel, '#restriction']) / 1e3) +
           '#read={:5,.1f}k, '.format(np.sum(bin_info.loc[is_sel, '#read']) / 1e3) +
@@ -235,7 +237,7 @@ for chr_nid in np.unique(bin_info['chr']):
         else:
             assert background_method == 'cvrg'
             source_colname = 'coverage'
-        if chr_nid == vp_info['vp_chr']:
+        if chr_nid == vp_info['vp_chr_idx']:
 
             # find probed area
             bin_pos = bin_info.loc[is_sel, 'pos'].values
@@ -265,7 +267,7 @@ for chr_nid in np.unique(bin_info['chr']):
                                                           n_epoch=inp_args.n_epoch * 10, nz_only=nonzero_only)
             MAX_BG_PEAK = np.max(bin_decay_corrected)
         else:
-            is_bg = bin_info['chr'] != vp_info['vp_chr']
+            is_bg = bin_info['chr_idx'] != vp_info['vp_chr_idx']
             [score_observed, bkgnd_mat] = perform_sigtest(bin_info.loc[is_sel, source_colname].values, gus_krn,
                                                           background=bin_info.loc[is_bg, source_colname].values,
                                                           n_epoch=inp_args.n_epoch, nz_only=nonzero_only)
@@ -313,9 +315,9 @@ for chr_nid in np.unique(bin_info['chr']):
 # TODO: change how p-values are calculated, currently its difficult to get very small p-values, i.e. #peaks is small
 for bin_type in ['cis', 'trans']:
     if bin_type == 'cis':
-        is_sel = bin_info['chr'] == vp_info['vp_chr']
+        is_sel = bin_info['chr_idx'] == vp_info['vp_chr_idx']
     else:
-        is_sel = bin_info['chr'] != vp_info['vp_chr']
+        is_sel = bin_info['chr_idx'] != vp_info['vp_chr_idx']
     n_bin = np.sum(is_sel)
     for background_method in background_methods:
         col_name = background_method + '_' + bin_type
@@ -361,8 +363,8 @@ if inp_args.store_all_enrichments:
     print('All bins scores are saved to: {:s}'.format(out_fpath_all))
 
 # Output top windows
-is_roi = overlap([vp_info['vp_chr'], vp_info['vp_be'], vp_info['vp_en']],
-                 bin_info[['chr', 'pos', 'pos']].values, offset=inp_args.roi_width)
+is_roi = overlap([vp_info['vp_chr_idx'], vp_info['vp_be'], vp_info['vp_en']],
+                 bin_info[['chr_idx', 'pos', 'pos']].values, offset=inp_args.roi_width)
 bin_nroi = bin_info.loc[~is_roi].sort_values(by='#cpt_zscr', ascending=False).reset_index(drop=True)[:inp_args.n_topbins]
 os.makedirs(os.path.dirname(out_fpath_top), exist_ok=True)
 bin_nroi.to_csv(out_fpath_top, sep='\t', na_rep='nan', index=False)
@@ -375,9 +377,9 @@ if inp_args.draw_plot:
     ax_h.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, loc: '{:,.0f}'.format(x)))
 
     # Plot important areas
-    ax_h.add_patch(Rectangle((0, vp_info['vp_chr'] - 1), chr_size[vp_info['vp_chr'] - 1], 1, facecolor='#61c0ff', edgecolor='None', alpha=0.1))
-    ax_h.add_patch(Rectangle((vp_info['vp_be'], vp_info['vp_chr'] - 1), vp_info['vp_en'] - vp_info['vp_be'], 1, facecolor='#fab700', edgecolor='None', alpha=1, zorder=100))
-    plt.plot([vp_info['vp_pos'], vp_info['vp_pos']], [vp_info['vp_chr'] - 1, vp_info['vp_chr']], color='#0f5bff', linewidth=10, alpha=0.7, solid_capstyle='butt')
+    ax_h.add_patch(Rectangle((0, vp_info['vp_chr_idx'] - 1), chr_size[vp_info['vp_chr_idx'] - 1], 1, facecolor='#61c0ff', edgecolor='None', alpha=0.1))
+    ax_h.add_patch(Rectangle((vp_info['vp_be'], vp_info['vp_chr_idx'] - 1), vp_info['vp_en'] - vp_info['vp_be'], 1, facecolor='#fab700', edgecolor='None', alpha=1, zorder=100))
+    plt.plot([vp_info['vp_pos'], vp_info['vp_pos']], [vp_info['vp_chr_idx'] - 1, vp_info['vp_chr_idx']], color='#0f5bff', linewidth=10, alpha=0.7, solid_capstyle='butt')
 
     # Mark top windows
     n_marked = 0
@@ -387,20 +389,20 @@ if inp_args.draw_plot:
         top_bin = bin_nroi.loc[ti]
         if top_bin['#cpt_zscr'] < 8:
             break
-        is_nei = (top_bin['chr'] == bin_nroi['chr'].iloc[:ti]) & \
+        is_nei = (top_bin['chr_idx'] == bin_nroi['chr_idx'].iloc[:ti]) & \
                  (np.abs(top_bin['pos'] - bin_nroi['pos'].iloc[:ti]) < 10e6)
         if np.any(is_nei):
             continue
-        plt.plot([top_bin['pos'], top_bin['pos']], [top_bin['chr'] - 1, top_bin['chr']],
+        plt.plot([top_bin['pos'], top_bin['pos']], [top_bin['chr_idx'] - 1, top_bin['chr_idx']],
                  linewidth=1.5, color=clr_map[n_marked], alpha=1.0, solid_capstyle='butt')
-        plt.text(top_bin['pos'], top_bin['chr'] - 0.75, ' {:d},{:d}'.format(n_marked + 1, ti + 1),
+        plt.text(top_bin['pos'], top_bin['chr_idx'] - 0.75, ' {:d},{:d}'.format(n_marked + 1, ti + 1),
                  verticalalignment='center', horizontalalignment='left', fontsize=4)
         n_marked = n_marked + 1
 
     # Plot profiles
     PROFILE_MAX = {
-        '#read': bin_info.loc[bin_info['chr'] != vp_info['vp_chr'], '#read'].max(),
-        '#capture': bin_info.loc[bin_info['chr'] != vp_info['vp_chr'], '#capture'].max(),
+        '#read': bin_info.loc[bin_info['chr_idx'] != vp_info['vp_chr_idx'], '#read'].max(),
+        '#capture': bin_info.loc[bin_info['chr_idx'] != vp_info['vp_chr_idx'], '#capture'].max(),
         '#cpt_zscr': 8.0,
         'cpt-shfl_zscr': 8.0,
         'cpt-swap_zscr': 8.0,
@@ -410,7 +412,7 @@ if inp_args.draw_plot:
     clr_map = ['#fc974a', '#000000', '#04db00']  # '#e2d003', '#a352ff'
     prf_name_lst = ['#read', '#capture', '#cpt_zscr']
     for chr_idx in range(n_chr):
-        is_sel = bin_info['chr'] == (chr_idx + 1)
+        is_sel = bin_info['chr_idx'] == (chr_idx + 1)
         if np.sum(is_sel) == 0:
             continue
         bin_sel = bin_info.loc[is_sel]
