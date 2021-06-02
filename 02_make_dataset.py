@@ -55,15 +55,15 @@ for ei, exp_idx in enumerate(inp_args.expr_indices):
     assert os.path.isfile(input_bam), 'Could not find the bam file: {:s}'.format(input_bam)
 
     # get chr info
-    chr_lst = get_chr_info(genome=vp_info['genome'], property='chr_name')
-    chr_size = get_chr_info(genome=vp_info['genome'], property='chr_size')
+    chr_lst = get_chr_info(vp_info['genome'], property='chr_name')
+    chr_size = get_chr_info(vp_info['genome'], property='chr_size')
     n_chr = len(chr_lst)
     chr2nid = dict(zip(chr_lst, np.arange(n_chr) + 1))
 
     # load RE positions
-    re1_pos = get_re_info(re_name=vp_info['res_enzyme'], property='pos', genome=vp_info['genome'])
+    re1_pos = get_re_info(re_name=vp_info['res_enzyme'], property='pos', reference_fasta=vp_info['genome'])
     if ('second_cutter' in vp_info) and isinstance(vp_info['second_cutter'], str):
-        re2_pos = get_re_info(re_name=vp_info['second_cutter'], property='pos', genome=vp_info['genome'])
+        re2_pos = get_re_info(re_name=vp_info['second_cutter'], property='pos', reference_fasta=vp_info['genome'])
     else:
         re2_pos = [np.empty(0, dtype=int)] * n_chr
     re_pos = [[] for _ in range(n_chr)]
@@ -89,7 +89,7 @@ for ei, exp_idx in enumerate(inp_args.expr_indices):
     nfrg_loaded = 0
     nfrg_ignore = 0
     qname2nid = {}
-    bam_pd = pd.DataFrame(columns=['read_nid', 'map_chr', 'map_start', 'map_end', 'map_strand', 'mq', 'seq_order'], dtype=np.int)
+    bam_pd = pd.DataFrame(columns=['read_nid', 'map_chr_idx', 'map_chr_name', 'map_start', 'map_end', 'map_strand', 'mq', 'seq_order'], dtype=np.int)
     with pysam.AlignmentFile(input_bam, 'rb') as bam_fid:
         EOF = False
         while not EOF:
@@ -114,7 +114,8 @@ for ei, exp_idx in enumerate(inp_args.expr_indices):
             # make/append to dataframe
             part_pd = pd.DataFrame()
             part_pd['read_nid'] = [qname2nid[frag.qname] for frag in frags]
-            part_pd['map_chr'] = [chr2nid[frag.reference_name] for frag in frags]
+            part_pd['map_chr_idx'] = [chr2nid[frag.reference_name] for frag in frags]
+            part_pd['map_chr_name'] = [frag.reference_name for frag in frags]
             part_pd['map_start'] = [frag.reference_start for frag in frags]
             part_pd['map_end'] = [frag.reference_end for frag in frags]
             part_pd['map_strand'] = [1 - (frag.is_reverse * 2) for frag in frags]
@@ -147,7 +148,7 @@ for ei, exp_idx in enumerate(inp_args.expr_indices):
     # sort fragments, by chr, largest map_size
     print('\tSorting {:,d} mapped fragments ...'.format(bam_pd.shape[0]))
     # lexsort seems to be faster than pandas: https://stackoverflow.com/questions/55493274/performance-of-sorting-structured-arrays-numpy
-    srt_idx = np.lexsort([-bam_pd['mq'], bam_pd['map_start'], bam_pd['map_chr'], bam_pd['read_nid']])
+    srt_idx = np.lexsort([-bam_pd['mq'], bam_pd['map_start'], bam_pd['map_chr_idx'], bam_pd['read_nid']])
     bam_pd = bam_pd.loc[srt_idx].reset_index(drop=True)
     del srt_idx
 
@@ -155,7 +156,7 @@ for ei, exp_idx in enumerate(inp_args.expr_indices):
     n_frg = bam_pd.shape[0]
     print('\tChecking {:,d} fragment overlap ...'.format(n_frg))
     bam_pd['map_#merge'] = 0
-    frg_np = bam_pd[['read_nid', 'map_chr', 'map_start', 'map_end', 'mq', 'map_#merge']].values
+    frg_np = bam_pd[['read_nid', 'map_chr_idx', 'map_start', 'map_end', 'mq', 'map_#merge']].values
     is_val = np.full(n_frg, fill_value=True)
     fi = 0
     # TODO: better merging strategy is to keep top MQs, but that requires pairwise comparison of all fragments => expensive
@@ -190,7 +191,7 @@ for ei, exp_idx in enumerate(inp_args.expr_indices):
     # TODO: this can be done much more efficiently: searchsort for all fragments at once
     n_rf = bam_pd.shape[0]
     print('\tExtending {:,d} frag-ends to closest restriction enzyme recognition sites'.format(n_rf))
-    map_np = bam_pd[['map_chr', 'map_start', 'map_end', 'map_strand']].values
+    map_np = bam_pd[['map_chr_idx', 'map_start', 'map_end', 'map_strand']].values
     rf_np = np.zeros([n_rf, 4], dtype=np.int64)
     for fi in range(n_rf):
         if fi % 1e6 == 0:
@@ -218,13 +219,13 @@ for ei, exp_idx in enumerate(inp_args.expr_indices):
 
     # sort reads
     print('\tSorting {:,d} mapped fragments by read ID ...'.format(bam_pd.shape[0]))
-    srt_idx = np.lexsort(bam_pd[['mq', 'map_strand', 'rf_start', 'map_chr', 'read_nid']].values.T)
+    srt_idx = np.lexsort(bam_pd[['mq', 'map_strand', 'rf_start', 'map_chr_idx', 'read_nid']].values.T)
     bam_pd = bam_pd.loc[srt_idx].reset_index(drop=True)
     del srt_idx
 
     # merging fragments covering the same restriction fragment (ignoring their strands)
     print('\tMerging fragments covering the same restriction fragment, scanning {:,d} fragments:'.format(bam_pd.shape[0]))
-    ext_np = bam_pd[['read_nid', 'map_chr', 'rf_start', 'rf_end', 'mq', 'map_#merge']].values
+    ext_np = bam_pd[['read_nid', 'map_chr_idx', 'rf_start', 'rf_end', 'mq', 'map_#merge']].values
     n_rf = ext_np.shape[0]
     is_val = np.full(n_rf, fill_value=True)
     for fi in range(n_rf - 1):
@@ -255,9 +256,9 @@ for ei, exp_idx in enumerate(inp_args.expr_indices):
             continue
         strnd_pd = bam_pd.loc[is_sel].copy()
         strnd_pd = strnd_pd.sort_values(by='mq', ascending=False).reset_index(drop=True)
-        fe_uid, fe_idx, fe_frq = np.unique(strnd_pd[['map_chr', 'rf_' + side]],
+        fe_uid, fe_idx, fe_frq = np.unique(strnd_pd[['map_chr_idx', 'rf_' + side]],
                                            axis=0, return_index=True, return_counts=True)
-        assert np.array_equal(strnd_pd.loc[fe_idx, ['map_chr', 'rf_' + side]], fe_uid)
+        assert np.array_equal(strnd_pd.loc[fe_idx, ['map_chr_idx', 'rf_' + side]], fe_uid)
         strnd_pd = strnd_pd.loc[fe_idx]
         strnd_pd['#read'] = fe_frq
         cmb_pd = cmb_pd.append(strnd_pd, ignore_index=True)
@@ -267,14 +268,14 @@ for ei, exp_idx in enumerate(inp_args.expr_indices):
     del cmb_pd
 
     # final adjustments
-    bam_pd.rename({'map_chr': 'chr'}, axis=1, inplace=True)
+    bam_pd.rename({'map_chr_idx': 'chr_idx'}, axis=1, inplace=True)
     is_fwrd = bam_pd['map_strand'] == 1
     bam_pd['pos'] = -1
     bam_pd.loc[ is_fwrd, 'pos'] = bam_pd.loc[ is_fwrd, 'rf_start']
     bam_pd.loc[~is_fwrd, 'pos'] = bam_pd.loc[~is_fwrd, 'rf_end']
-    bam_pd = bam_pd[['chr', 'pos', '#read', 'mq', 'map_start', 'map_end', 'map_strand',
+    bam_pd = bam_pd[['chr_idx', 'pos', '#read', 'mq', 'map_start', 'map_end', 'map_strand',
                      'rf_start', 'rf_end', 're1_type', 're2_type']]
-    bam_pd = bam_pd.sort_values(by=['chr', 'rf_start', 'pos']).reset_index(drop=True)
+    bam_pd = bam_pd.sort_values(by=['chr_idx', 'rf_start', 'pos']).reset_index(drop=True)
     del is_fwrd
 
     # saving results
