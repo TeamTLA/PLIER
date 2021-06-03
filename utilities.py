@@ -159,7 +159,7 @@ def load_dataset(vp_info_lst, target_field='frg_np', data_path='./datasets', ver
     for vp_idx, vp_info in enumerate(vp_info_lst):
         h5_fpath = Path(data_path).joinpath(vp_info['expr_id']).with_suffix('.hdf5')
         if verbose:
-            print('\t#{:d}: [{:d}: {:s}]: {:s}'.format(vp_idx + 1, vp_info['row_index'], vp_info['expr_id'], h5_fpath))
+            print('\t#{:d}: [{:d}: {:s}]: {:s}'.format(vp_idx + 1, vp_info['row_index'], vp_info['expr_id'], str(h5_fpath)))
             if (vp_info_lst[0]['vp_chr_idx'] != vp_info['vp_chr_idx']) or (np.abs(vp_info_lst[0]['vp_pos'] - vp_info['vp_pos']) > 1e6):
                 print('[w] Viewpoint is far away compared to others runs being loaded.')
 
