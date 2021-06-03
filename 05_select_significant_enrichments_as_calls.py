@@ -56,6 +56,10 @@ for ei, (expr_idx, vp_info) in enumerate(vp_infos.iterrows()):
         inp_args.input_dir,
         '{:s}_merged-enrichments.tsv.gz'.format(vp_info['expr_id'])
     )
+    if not os.path.isfile(enrichment_fpath):
+        print('[i] Enrichment file {:s} not found, Stopping the execution'.format(enrichment_fpath))
+        exit(0)
+
     enrichments = pd.read_csv(enrichment_fpath, sep='\t')
     print('\t[{:2d}/{:d}] Loading enrichments in: {:s}'.format(ei + 1, len(vp_infos), enrichment_fpath))
 
@@ -107,6 +111,10 @@ significant_calls = pd.DataFrame(significant_calls, index=range(len(significant_
 # =======================
 # checking for amplification events
 # mark overlapping calls
+if len(significant_calls) == 0:
+    print('[i] No significant calls found in {:s}, Stopping the execution'.format(enrichment_fpath))
+    exit(0)
+
 call_crd = significant_calls[['call_chr_idx', 'call_beg', 'call_end']].values
 rgn_idxs = np.arange(call_crd.shape[0])
 for ci in range(call_crd.shape[0]):
